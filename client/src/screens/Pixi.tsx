@@ -34,12 +34,21 @@ const HexGrid: React.FC = () => {
       }
 
       // ──────────────────────────────────────────────────────────────────────────
-      // From here on, everything is basically the same “on-demand creation” logic
+      // 1) Add our custom shape generator from -1000..+1000 in q,r:
       // ──────────────────────────────────────────────────────────────────────────
+      function bigNegativeToPositiveShape() {
+        const coords = [];
+        for (let q = -1000; q <= 1000; q++) {
+          for (let r = -1000; r <= 1000; r++) {
+            coords.push({ q, r });
+          }
+        }
+        return coords;
+      }
 
       // Constants
       const HEX_SIZE = 20;
-      const GRID_WIDTH = 1000;
+      const GRID_WIDTH = 1000; // <-- We'll leave these alone, though they're unused now
       const GRID_HEIGHT = 1000;
 
       // Honeycomb setup
@@ -47,14 +56,22 @@ const HexGrid: React.FC = () => {
         dimensions: HEX_SIZE,
         orientation: Orientation.FLAT,
       });
-      const grid = new Grid(
-        Hex,
-        rectangle({ width: GRID_WIDTH, height: GRID_HEIGHT })
-      );
+
+      // ──────────────────────────────────────────────────────────────────────────
+      // 2) Use our custom shape instead of rectangle() — minimal change here:
+      // ──────────────────────────────────────────────────────────────────────────
+      // const grid = new Grid(Hex, rectangle({ width: GRID_WIDTH, height: GRID_HEIGHT }));
+      const grid = new Grid(Hex, bigNegativeToPositiveShape());
 
       // Container that holds all hex objects
       const hexContainer = new PIXI.Container();
       app.stage.addChild(hexContainer);
+
+      // ──────────────────────────────────────────────────────────────────────────
+      // 3) Offset the container so (0,0) is in the center of the screen initially:
+      // ──────────────────────────────────────────────────────────────────────────
+      hexContainer.x = app.screen.width / 2;
+      hexContainer.y = app.screen.height / 2;
 
       // We'll store references to created hexes here:
       // Key: "q,r" => Value: { container: PIXI.Container; hex: any }
@@ -123,8 +140,8 @@ const HexGrid: React.FC = () => {
         // Keep track of which hexes *should* be visible
         const visibleHexKeys = new Set<string>();
 
-        // In a real app, you'd want something more efficient than scanning all 1M hexes.
-        // But for demonstration, this is straightforward.
+        // In a real app, you'd want something more efficient than scanning all hexes,
+        // but for demonstration, this is straightforward.
         for (const hex of grid) {
           if (
             hex.x >= minX &&
