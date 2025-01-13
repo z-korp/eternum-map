@@ -3,36 +3,58 @@ import * as PIXI from 'pixi.js';
 import { defineHex, Grid, Orientation, hexToPoint } from 'honeycomb-grid';
 import _ from 'lodash';
 import { Progress } from '@/components/ui/progress';
+import { Realm, useRealms } from '../hooks/useRealms';
+import { preloadRcsImages } from '../utils/preloadRcsImages';
 
 const HexGrid: React.FC = () => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  // Create refs to store the PIXI application and container
   const appRef = useRef<PIXI.Application | null>(null);
   const hexContainerRef = useRef<PIXI.Container | null>(null);
 
-  // Use React state for the center hex (axial coordinates)
-  // (These coordinates are in q, r space)
-  const [centerHex, setCenterHex] = useState({ q: 0, r: 0 });
-
+  const { realms } = useRealms();
+  const [centerHex, setCenterHex] = useState({ q: 185, r: 74 });
   const [progress, setProgress] = useState(0);
+  const [rcsTextures, setRcsTextures] = useState<Record<
+    string,
+    PIXI.Texture
+  > | null>(null);
 
-  // We'll store our helper functions in refs (optional, but useful if they use app/hexContainer)
+  const [hoveredRealm, setHoveredRealm] = useState<Realm | null>(null);
+
+  function handlePointerOver(realm: Realm) {
+    setHoveredRealm(realm);
+  }
+
+  function handlePointerOut() {
+    setHoveredRealm(null);
+  }
+
+  const rcsTexturesRef = useRef<Record<string, PIXI.Texture> | null>(null);
   const repositionContainerRef = useRef<() => void>(() => {});
   const updateHexesInViewRef = useRef<() => void>(() => {});
+  const hexMapRef = useRef(
+    new Map<string, { container: PIXI.Container; hex: any }>()
+  );
+  const realmsRef = useRef(realms);
 
-  // Main effect for PIXI initialization and creating the grid.
   useEffect(() => {
     if (!pixiContainer.current) return;
 
     const app = new PIXI.Application();
     appRef.current = app;
 
-    (async () => {
+    const initializePixi = async () => {
+      // Preload your resource images
+      const textures = await preloadRcsImages();
+      setRcsTextures(textures);
+      rcsTexturesRef.current = textures;
+
       await app.init({
         background: 0x1099bb,
         resizeTo: window,
         antialias: true,
-        resolution: window.devicePixelRatio,
+        autoDensity: true,
+        resolution: window.devicePixelRatio || 1,
       });
 
       if (pixiContainer.current) {
@@ -66,51 +88,46 @@ const HexGrid: React.FC = () => {
       hexContainerRef.current = hexContainer;
       app.stage.addChild(hexContainer);
 
-      // We'll also store hexMap and visibleHexKeys in local scope in this effect:
-      const hexMap = new Map<string, { container: PIXI.Container; hex: any }>();
-
-      // Helper: Convert a center hex (q, r) to pixel coordinates
       const centerPixel = (hexCoord: { q: number; r: number }) => {
-        // Note: new Hex(centerHex) converts the axial coordinate into a hex object.
         return hexToPoint(new Hex(hexCoord));
       };
 
-      // Helper function: reposition the container so that the center tile stays at screen center.
-      // This version uses pivot and sets container.position directly.
       const repositionContainer = () => {
         if (!appRef.current || !hexContainerRef.current) return;
+
         const screenCenter = {
-          x: appRef.current.screen.width / window.devicePixelRatio / 2,
-          y: appRef.current.screen.height / window.devicePixelRatio / 2,
+          x: appRef.current.screen.width / 2,
+          y: appRef.current.screen.height / 2,
         };
-        // Calculate the pixel coordinate for the center tile.
+
+        // Factor in the current scale of the hexContainer
+        const scale = hexContainerRef.current.scale.x; // Assuming uniform scaling
+
+        // Adjust the center pixel calculation to account for scale
         const centerPos = centerPixel(centerHex);
-        // Set the container's pivot to the center tile's pixel coordinate.
         hexContainerRef.current.pivot.set(centerPos.x, centerPos.y);
-        // Position the container such that the pivot (the center tile) is exactly at the screen center.
-        hexContainerRef.current.position.set(screenCenter.x, screenCenter.y);
+        hexContainerRef.current.position.set(
+          screenCenter.x / scale,
+          screenCenter.y / scale
+        );
       };
 
-      // Define updateHexesInView as in your code:
       function updateHexesInView() {
         if (!appRef.current || !hexContainerRef.current) return;
 
         const hexContainer = hexContainerRef.current;
-
-        // Convert the screen's top-left and bottom-right to container's local coordinates
         const topLeft = hexContainer.toLocal({ x: 0, y: 0 });
         const bottomRight = hexContainer.toLocal({
-          x: appRef.current.screen.width / window.devicePixelRatio,
-          y: appRef.current.screen.height / window.devicePixelRatio,
+          x: appRef.current.screen.width,
+          y: appRef.current.screen.height,
         });
 
-        // Compute the basic visible bounds
         const minX = Math.min(topLeft.x, bottomRight.x);
         const maxX = Math.max(topLeft.x, bottomRight.x);
         const minY = Math.min(topLeft.y, bottomRight.y);
         const maxY = Math.max(topLeft.y, bottomRight.y);
 
-        // Add a margin (for example, to render one extra hex column/row on each side)
+        // Margin for extra hexes
         const marginY = HEX_SIZE * 15;
         const marginX = HEX_SIZE * 24;
         const expandedMinX = minX - marginX;
@@ -118,86 +135,155 @@ const HexGrid: React.FC = () => {
         const expandedMinY = minY - marginY;
         const expandedMaxY = maxY + marginY;
 
-        // Keep track of which hexes should be visible
         const visibleHexKeys = new Set<string>();
 
-        // Iterate over the entire grid (or a subset if you have an efficient way)
-        // For every hex, check if its pixel coordinate (from hexToPoint) lies within the expanded bounds.
         for (const hex of grid) {
-          const point = hexToPoint(hex); // these are in grid (or container) space
-          const x = point.x;
-          const y = point.y;
-
+          const point = hexToPoint(hex);
           if (
-            x >= expandedMinX &&
-            x <= expandedMaxX &&
-            y >= expandedMinY &&
-            y <= expandedMaxY
+            point.x >= expandedMinX &&
+            point.x <= expandedMaxX &&
+            point.y >= expandedMinY &&
+            point.y <= expandedMaxY
           ) {
             const key = `${hex.q},${hex.r}`;
             visibleHexKeys.add(key);
 
-            // If this hex does not yet exist in our hexMap, create and add it.
-            if (!hexMap.has(key)) {
-              const container = createHexContainer(hex);
-              hexMap.set(key, { container, hex });
+            // Check for a matching realm first.
+            const realm = realmsRef.current.find(
+              (realm) =>
+                realm.coordinates.x === hex.q && realm.coordinates.y === hex.r
+            );
+
+            if (!hexMapRef.current.has(key)) {
+              // Create a container that is already aware of the realm (if present)
+              const container = createHexContainer(hex, realm);
+              hexMapRef.current.set(key, { container, hex });
               hexContainer.addChild(container);
+            } else {
+              // Optionally, if the container already exists, update it if realm info is available.
+              const { container } = hexMapRef.current.get(key)!;
+              if (realm) {
+                // You can either update the container's children or recreate it.
+                // For simplicity, let’s re-create it:
+                hexContainer.removeChild(container);
+                container.destroy({ children: true });
+                const updatedContainer = createHexContainer(hex, realm);
+                hexMapRef.current.set(key, {
+                  container: updatedContainer,
+                  hex,
+                });
+                hexContainer.addChild(updatedContainer);
+              }
             }
           }
         }
 
-        // Now remove any hexes that are no longer visible.
-        for (const [key, { container }] of hexMap.entries()) {
+        // Remove hexes that are no longer visible.
+        for (const [key, { container }] of hexMapRef.current.entries()) {
           if (!visibleHexKeys.has(key)) {
             hexContainer.removeChild(container);
             container.destroy({ children: true });
-            hexMap.delete(key);
+            hexMapRef.current.delete(key);
           }
         }
       }
 
-      // Create a helper to build a hex container.
-      function createHexContainer(hex: any): PIXI.Container {
-        const hexAndTextContainer = new PIXI.Container();
+      function createHexContainer(hex, realmOverride) {
+        // Get the hex center (absolute pixel coordinates)
         const point = hexToPoint(hex);
+
+        // Create a container and position it at the hex’s center.
+        const hexAndTextContainer = new PIXI.Container();
         hexAndTextContainer.x = 0;
         hexAndTextContainer.y = 0;
         const graphics = new PIXI.Graphics();
-        function drawHex(color: number) {
-          graphics.clear();
+        const realm =
+          realmOverride ||
+          realmsRef.current.find(
+            (realm) =>
+              realm.coordinates.x === hex.q && realm.coordinates.y === hex.r
+          );
+
+        if (realm) {
           graphics
             .poly(hex.corners)
-            .fill(color)
-            .stroke({ width: 1, color: 'white', alignment: 0.5 });
+            .fill(0xffd700)
+            .stroke({ width: 1, color: 'black', alignment: 0.5 });
+        } else {
+          graphics
+            .poly(hex.corners)
+            .fill(0xffffff)
+            .stroke({ width: 1, color: 'black', alignment: 0.5 });
         }
-        drawHex(0x0000ff);
+
+        // Add the hex polygon (drawn relative to 0,0 in the container).
+        hexAndTextContainer.addChild(graphics);
+
+        // Now add text and resource sprites if a realm exists.
+        if (realm) {
+          // Add text centered at (0,0) in the container.
+          const labelText = new PIXI.Text(realm.realmName, {
+            fill: 0x000000,
+            fontSize: 10,
+            fontFamily: 'Arial',
+            align: 'center',
+          });
+          labelText.anchor.set(0.5);
+          labelText.position.set(point.x, point.y);
+          //hexAndTextContainer.addChild(labelText);
+
+          // Use preloaded textures to create sprites for each resource.
+          realm.resources.forEach((resourceId: number, index: number) => {
+            const angleOffset = (0 * Math.PI) / 180; // 45 degrees in radians
+            const angle =
+              (index * 2 * Math.PI) / realm.resources.length + angleOffset;
+            const radius = 16;
+            // Choose an image filename based on resourceId or other logic.
+            // For example, if resourceId is directly the filename:
+            const filename = `${resourceId}.png`;
+
+            // Make sure rcsTextures is available.
+            const textureSource = rcsTexturesRef.current;
+            console.log('textureSource', textureSource);
+            if (textureSource && textureSource[filename]) {
+              const resourceSprite = new PIXI.Sprite(textureSource[filename]);
+              resourceSprite.anchor.set(0.5);
+              resourceSprite.width = HEX_SIZE / 1.5;
+              resourceSprite.height = HEX_SIZE / 1.5;
+              resourceSprite.position.set(
+                point.x + radius * Math.cos(angle),
+                point.y + radius * Math.sin(angle)
+              );
+              hexAndTextContainer.addChild(resourceSprite);
+            } else {
+              console.error("Couldn't find texture for", filename);
+            }
+          });
+        }
+
+        // Setup simple pointer interactivity for the hex
         graphics.eventMode = 'static';
         graphics.cursor = 'pointer';
-        graphics.on('pointerover', () => drawHex(0xffff00));
-        graphics.on('pointerout', () => drawHex(0x0000ff));
-        const labelText = new PIXI.Text(`(${hex.q},${hex.r})`, {
-          fill: 0xff0000,
-          fontSize: 10,
-          fontFamily: 'Arial',
-          align: 'center',
+        graphics.on('pointerover', () => {
+          handlePointerOver(realm);
+          graphics.tint = 0xffff00;
         });
-        labelText.anchor.set(0.5, 0.5);
-        labelText.position.set(point.x, point.y);
-        hexAndTextContainer.addChild(graphics);
-        hexAndTextContainer.addChild(labelText);
+        graphics.on('pointerout', () => {
+          graphics.tint = 0xffffff;
+          handlePointerOut();
+        });
+
         return hexAndTextContainer;
       }
-
-      // Save our helper functions to refs so they can be used later.
       repositionContainerRef.current = repositionContainer;
       updateHexesInViewRef.current = updateHexesInView;
 
-      // Set up interactivity (drag, zoom) and call updateHexesInView where needed.
-      hexContainer.eventMode = 'static';
-      hexContainer.cursor = 'grab';
       let isDragging = false;
       let dragStartPos = { x: 0, y: 0 };
       let containerStartPos = { x: 0, y: 0 };
+      hexContainer.eventMode = 'static';
+      hexContainer.cursor = 'grab';
+
       hexContainer.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
         isDragging = true;
         hexContainer.cursor = 'grabbing';
@@ -205,71 +291,70 @@ const HexGrid: React.FC = () => {
         containerStartPos = { x: hexContainer.x, y: hexContainer.y };
       });
 
-      const debouncedUpdateHexesInView = _.debounce(updateHexesInView, 16);
       hexContainer.on('pointermove', (e: PIXI.FederatedPointerEvent) => {
         if (!isDragging) return;
         const dx = e.global.x - dragStartPos.x;
         const dy = e.global.y - dragStartPos.y;
         hexContainer.x = containerStartPos.x + dx;
         hexContainer.y = containerStartPos.y + dy;
-        debouncedUpdateHexesInView();
+        _.debounce(updateHexesInView, 16)();
       });
 
-      const stopDrag = () => {
+      hexContainer.on('pointerup', () => {
         isDragging = false;
         hexContainer.cursor = 'grab';
-      };
-      hexContainer.on('pointerup', stopDrag);
-      hexContainer.on('pointerupoutside', stopDrag);
+      });
+      hexContainer.on('pointerupoutside', () => {
+        isDragging = false;
+        hexContainer.cursor = 'grab';
+      });
 
       let scaleFactor = 1;
-      function onWheel(e: WheelEvent) {
+      app.canvas.addEventListener('wheel', (e: WheelEvent) => {
         e.preventDefault();
-
-        // Update scale factor depending on zoom direction.
         scaleFactor *= e.deltaY < 0 ? 1.1 : 0.9;
-
-        // Update the container pivot and position before changing scale.
-        if (appRef.current && hexContainerRef.current) {
-          const screenCenter = {
-            x: appRef.current.screen.width / window.devicePixelRatio / 2,
-            y: appRef.current.screen.height / window.devicePixelRatio / 2,
-          };
-          const centerPos = centerPixel(centerHex);
-          hexContainerRef.current.pivot.set(centerPos.x, centerPos.y);
-          hexContainerRef.current.position.set(screenCenter.x, screenCenter.y);
-          hexContainerRef.current.scale.set(scaleFactor);
-        }
-
+        hexContainer.scale.set(scaleFactor);
         updateHexesInView();
-      }
+      });
 
-      app.canvas.addEventListener('wheel', onWheel, { passive: false });
-      window.addEventListener('resize', updateHexesInView);
-
-      // Initial positioning and update
       repositionContainer();
-      updateHexesInView();
+      updateHexesInView([]);
+    };
 
-      return () => {
-        app.canvas.removeEventListener('wheel', onWheel);
-        window.removeEventListener('resize', updateHexesInView);
-        app.destroy(true, { children: true });
-      };
-    })();
+    initializePixi();
+
+    return () => {
+      app.destroy(true, { children: true });
+    };
   }, []);
 
-  // This effect will run when 'centerHex' changes.
   useEffect(() => {
-    if (!appRef.current || !hexContainerRef.current) return;
     if (repositionContainerRef.current && updateHexesInViewRef.current) {
       repositionContainerRef.current();
       updateHexesInViewRef.current();
     }
   }, [centerHex]);
 
+  useEffect(() => {
+    realmsRef.current = realms;
+    // Also trigger an update if needed:
+    if (updateHexesInViewRef.current) {
+      updateHexesInViewRef.current();
+    }
+  }, [realms]);
+
   return (
     <div className="relative w-screen h-screen">
+      {hoveredRealm && (
+        <div className="absolute top-4 right-4 bg-white p-4 shadow-lg rounded">
+          <h4>{hoveredRealm.realmName}</h4>
+          <p>
+            Coordinates: ({hoveredRealm.coordinates.x},{' '}
+            {hoveredRealm.coordinates.y})
+          </p>
+          <p>Resources: {hoveredRealm.resources.join(', ')}</p>
+        </div>
+      )}
       <div
         ref={pixiContainer}
         style={{
@@ -280,14 +365,14 @@ const HexGrid: React.FC = () => {
           overflow: 'hidden',
         }}
       />
-      {progress < 100 && (
+      {/*progress < 100 && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 flex flex-col gap-2 bg-background/90 p-4 rounded-lg shadow-lg">
           <div className="text-center text-sm font-medium">
             Loading Hex Grid... {Math.round(progress)}%
           </div>
           <Progress value={progress} className="w-full" />
         </div>
-      )}
+      )*/}
     </div>
   );
 };
