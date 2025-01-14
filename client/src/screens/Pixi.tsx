@@ -14,7 +14,7 @@ const HexGrid: React.FC = () => {
   const hexContainerRef = useRef<PIXI.Container | null>(null);
 
   const { realms } = useRealms();
-  const [centerHex, setCenterHex] = useState({ q: -28, r: -14 });
+  const [centerHex, setCenterHex] = useState({ q: 0, r: 0 });
   const [progress, setProgress] = useState(0);
   const [rcsTextures, setRcsTextures] = useState<Record<
     string,
@@ -33,6 +33,7 @@ const HexGrid: React.FC = () => {
     setHoveredRealm(null);
   }
 
+  const centerHexRef = useRef(centerHex);
   const rcsTexturesRef = useRef<Record<string, PIXI.Texture> | null>(null);
   const repositionContainerRef = useRef<() => void>(() => {});
   const updateHexesInViewRef = useRef<() => void>(() => {});
@@ -40,6 +41,14 @@ const HexGrid: React.FC = () => {
     new Map<string, { container: PIXI.Container; hex: any }>()
   );
   const realmsRef = useRef(realms);
+
+  useEffect(() => {
+    centerHexRef.current = centerHex;
+    if (repositionContainerRef.current && updateHexesInViewRef.current) {
+      repositionContainerRef.current();
+      updateHexesInViewRef.current();
+    }
+  }, [centerHex]);
 
   useEffect(() => {
     if (!pixiContainer.current) return;
@@ -110,16 +119,18 @@ const HexGrid: React.FC = () => {
           y: appRef.current.screen.height / 2,
         };
 
-        // Factor in the current scale of the hexContainer
-        const scale = hexContainerRef.current.scale.x; // Assuming uniform scaling
+        // Get the current center hex from the ref.
+        const currentCenterHex = centerHexRef.current;
 
-        // Adjust the center pixel calculation to account for scale
-        const centerPos = centerPixel(centerHex);
+        // Calculate the center pixel based on the current center hex.
+        const centerPos = centerPixel(currentCenterHex);
+
+        // Update pivot and position accordingly.
+        // Pivot is set in container space.
         hexContainerRef.current.pivot.set(centerPos.x, centerPos.y);
-        hexContainerRef.current.position.set(
-          screenCenter.x / scale,
-          screenCenter.y / scale
-        );
+
+        // Position is in stage (global) space.
+        hexContainerRef.current.position.set(screenCenter.x, screenCenter.y);
       };
 
       function updateHexesInView() {
@@ -251,6 +262,21 @@ const HexGrid: React.FC = () => {
         }
 
         hexAndTextContainer.addChild(graphics);
+
+        // *** Debug Text: Show hex coordinates ***
+        /*const debugText = new PIXI.Text(`(${hex.q},${hex.r})`, {
+          fill: 0xff0000,
+          fontSize: 10,
+          fontFamily: 'Arial',
+        });
+        // Center the text in the hex
+        debugText.anchor.set(0.5);
+        // Position the text at the center of the hex tile
+        debugText.position.set(point.x, point.y);
+        // Optionally, name it so you can find it later if needed
+        debugText.name = 'debugText';
+        hexAndTextContainer.addChild(debugText);
+        */
 
         // Handle resource sprites
         if (realm) {
@@ -467,9 +493,9 @@ const HexGrid: React.FC = () => {
             Coordinates: ({hoveredRealm.coordinates.x},{' '}
             {hoveredRealm.coordinates.y})
           </p>
-          <p>
+          {/*<p>
             Position: ({hoveredRealm.position.q}, {hoveredRealm.position.r})
-          </p>
+          </p>*/}
           <p>Resources: {hoveredRealm.resources.join(', ')}</p>
         </Card>
       )}

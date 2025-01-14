@@ -36,6 +36,14 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
     onRealmSelect(realm);
     setSearchTerm(realm.realmName);
     setShowSearchResults(false);
+
+    // If the realm has coordinates, automatically set the position
+    if (realm.coordinates) {
+      const { x, y } = realm.coordinates;
+      setXCoord(x.toString());
+      setYCoord(y.toString());
+      onPositionSelect({ x, y });
+    }
   };
 
   const handlePositionSubmit = (e: FormEvent<HTMLFormElement>): void => {
@@ -52,6 +60,7 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
     setter: React.Dispatch<React.SetStateAction<string>>
   ): void => {
     setter(e.target.value);
+    setSearchTerm('');
   };
 
   return (
