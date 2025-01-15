@@ -1,8 +1,8 @@
-import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, MapPin } from 'lucide-react';
+import { Search, MapPin, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Realm } from '../hooks/useRealms';
 
 interface SearchMenuProps {
@@ -16,10 +16,11 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
   onRealmSelect,
   onPositionSelect,
 }) => {
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [xCoord, setXCoord] = useState<string>('');
-  const [yCoord, setYCoord] = useState<string>('');
-  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [xCoord, setXCoord] = useState('');
+  const [yCoord, setYCoord] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   const filteredRealms = realms
     .filter((realm) =>
@@ -27,17 +28,10 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
     )
     .slice(0, 5);
 
-  const handleSearch = (e: ChangeEvent<HTMLInputElement>): void => {
-    setSearchTerm(e.target.value);
-    setShowSearchResults(e.target.value.length > 0);
-  };
-
-  const handleRealmSelect = (realm: Realm): void => {
+  const handleRealmSelect = (realm: Realm) => {
     onRealmSelect(realm);
     setSearchTerm(realm.realmName);
     setShowSearchResults(false);
-
-    // If the realm has coordinates, automatically set the position
     if (realm.coordinates) {
       const { x, y } = realm.coordinates;
       setXCoord(x.toString());
@@ -46,7 +40,7 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
     }
   };
 
-  const handlePositionSubmit = (e: FormEvent<HTMLFormElement>): void => {
+  const handlePositionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const x = parseInt(xCoord);
     const y = parseInt(yCoord);
@@ -55,70 +49,112 @@ const SearchMenu: React.FC<SearchMenuProps> = ({
     }
   };
 
-  const handleCoordChange = (
-    e: ChangeEvent<HTMLInputElement>,
-    setter: React.Dispatch<React.SetStateAction<string>>
-  ): void => {
-    setter(e.target.value);
-    setSearchTerm('');
-  };
-
   return (
-    <Card className="fixed top-4 left-4 w-64 shadow-lg">
-      <CardContent className="p-4 space-y-4">
-        <div className="relative">
-          <div className="flex items-center space-x-2">
-            <Search className="w-4 h-4 text-gray-500" />
-            <Input
-              placeholder="Search realms..."
-              value={searchTerm}
-              onChange={handleSearch}
-              className="flex-1"
-            />
-          </div>
+    <div className="fixed top-4 left-4 z-50">
+      <motion.div
+        className="bg-white rounded-lg shadow-lg h-full border border-gray-200"
+        initial={false}
+        animate={{
+          width: isOpen ? 256 : 42,
+        }}
+        transition={{
+          type: 'spring',
+          stiffness: 500,
+          damping: 30,
+        }}
+      >
+        <div className="p-2 h-full">
+          {!isOpen ? (
+            <div
+              className="w-6 h-6 cursor-pointer flex items-center justify-center"
+              onClick={() => setIsOpen(true)}
+            >
+              <Search className="w-6 h-6 text-gray-700" />
+            </div>
+          ) : (
+            <motion.div
+              className="space-y-4 h-full"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className="flex justify-end">
+                <X
+                  className="w-4 h-4 text-gray-700 cursor-pointer"
+                  onClick={() => setIsOpen(false)}
+                />
+              </div>
 
-          {showSearchResults && filteredRealms.length > 0 && (
-            <Card className="absolute w-full mt-1 z-50">
-              <CardContent className="p-2">
-                {filteredRealms.map((realm) => (
-                  <Button
-                    key={realm.realmName}
-                    variant="ghost"
-                    className="w-full justify-start text-left bg-white"
-                    onClick={() => handleRealmSelect(realm)}
-                  >
-                    {realm.realmName}
-                  </Button>
-                ))}
-              </CardContent>
-            </Card>
+              <div className="relative">
+                <div className="flex items-center space-x-2">
+                  <Search className="w-4 h-4 text-gray-500" />
+                  <Input
+                    placeholder="Search realms..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setShowSearchResults(e.target.value.length > 0);
+                    }}
+                    className="flex-1"
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {showSearchResults && filteredRealms.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute w-full mt-1 bg-white shadow-lg max-h-60 overflow-auto rounded-md"
+                    >
+                      {filteredRealms.map((realm) => (
+                        <Button
+                          key={realm.realmName}
+                          variant="ghost"
+                          className="w-full justify-start text-left hover:bg-gray-100 bg-white focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none"
+                          onClick={() => handleRealmSelect(realm)}
+                        >
+                          {realm.realmName}
+                        </Button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <form onSubmit={handlePositionSubmit} className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <MapPin className="w-4 h-4 text-gray-500" />
+                  <div className="grid grid-cols-2 gap-2 flex-1">
+                    <Input
+                      placeholder="X"
+                      value={xCoord}
+                      onChange={(e) => {
+                        setXCoord(e.target.value);
+                        setSearchTerm('');
+                      }}
+                      type="number"
+                    />
+                    <Input
+                      placeholder="Y"
+                      value={yCoord}
+                      onChange={(e) => {
+                        setYCoord(e.target.value);
+                        setSearchTerm('');
+                      }}
+                      type="number"
+                    />
+                  </div>
+                </div>
+                <Button type="submit" className="w-full">
+                  Go to Position
+                </Button>
+              </form>
+            </motion.div>
           )}
         </div>
-
-        <form onSubmit={handlePositionSubmit} className="space-y-2">
-          <div className="flex items-center space-x-2">
-            <MapPin className="w-4 h-4 text-gray-500" />
-            <div className="grid grid-cols-2 gap-2 flex-1">
-              <Input
-                placeholder="X"
-                value={xCoord}
-                onChange={(e) => handleCoordChange(e, setXCoord)}
-                type="number"
-              />
-              <Input
-                placeholder="Y"
-                value={yCoord}
-                onChange={(e) => handleCoordChange(e, setYCoord)}
-                type="number"
-              />
-            </div>
-          </div>
-          <Button type="submit" className="w-full">
-            Go to Position
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+      </motion.div>
+    </div>
   );
 };
 
