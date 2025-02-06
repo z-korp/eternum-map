@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { DojoProvider } from './dojo/context.tsx';
@@ -21,6 +21,7 @@ export function Main() {
 
   useEffect(() => {
     async function initialize() {
+      console.log('sssss');
       const setupResult = await setup(dojoConfig);
       setSetupResult(setupResult);
     }

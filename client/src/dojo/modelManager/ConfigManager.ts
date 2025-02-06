@@ -18,7 +18,7 @@ import {
 import { getComponentValue } from '@dojoengine/recs';
 import { getEntityIdFromKeys } from '@dojoengine/utils';
 import { ContractComponents } from '../contractComponents';
-import { configManager } from '../setup';
+//import { configManager } from '../setup';
 
 export class ClientConfigManager {
   private static _instance: ClientConfigManager;

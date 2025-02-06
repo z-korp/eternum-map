@@ -1,26 +1,36 @@
-import {
-  BUILDING_CATEGORY_POPULATION_CONFIG_ID,
-  HYPERSTRUCTURE_CONFIG_ID,
-  WORLD_CONFIG_ID,
-} from '@bibliothecadao/eternum';
 import { DojoConfig } from '@dojoengine/core';
-import { getEntities, getSyncEvents, syncEntities } from '@dojoengine/state';
-import { Clause } from '@dojoengine/torii-client';
 import { createClientComponents } from './createClientComponents';
 import { createSystemCalls } from './createSystemCalls';
-import { ClientConfigManager } from './modelManager/ConfigManager';
 import { setupNetwork } from './setupNetwork';
+import { init } from '@dojoengine/sdk/experimental';
 
 export type SetupResult = Awaited<ReturnType<typeof setup>>;
 
-export const configManager = ClientConfigManager.instance();
-
 export async function setup({ ...config }: DojoConfig) {
+  console.log('qqqq', config);
+  const sdk = await init({
+    client: {
+      rpcUrl: config.rpcUrl,
+      toriiUrl: config.toriiUrl,
+      relayUrl: config.relayUrl,
+      worldAddress: config.manifest.world.address,
+    },
+    domain: {
+      name: 'eternum',
+      version: '1.0',
+      chainId: 'KATANA',
+      revision: '1',
+    },
+  });
+  console.log('sdk', sdk);
+
   const network = await setupNetwork(config);
   const components = createClientComponents(network);
   const systemCalls = createSystemCalls(network);
 
-  const configClauses: Clause[] = [
+  console.log('bbbbb2');
+
+  /*const configClauses: Clause[] = [
     {
       Keys: {
         keys: [WORLD_CONFIG_ID.toString(), undefined, undefined],
@@ -51,11 +61,13 @@ export async function setup({ ...config }: DojoConfig) {
     },
   ];
 
-  /*await getEntities(
+  await getEntities(
     network.toriiClient,
     { Composite: { operator: 'Or', clauses: configClauses } },
     network.contractComponents as any
   );*/
+
+  //console.log('bbbbb');
 
   // fetch all existing entities from torii
   /*await getEntities(
@@ -74,14 +86,14 @@ export async function setup({ ...config }: DojoConfig) {
     false
   );*/
 
-  const sync = await syncEntities(
+  /*const sync = await syncEntities(
     network.toriiClient,
     network.contractComponents as any,
     [],
     false
   );
 
-  configManager.setDojo(components);
+  console.log('cccc');
 
   const eventSync = getSyncEvents(
     network.toriiClient,
@@ -107,13 +119,14 @@ export async function setup({ ...config }: DojoConfig) {
     10_000,
     false,
     false
-  );
+  );*/
 
   return {
     network,
     components,
     systemCalls,
-    sync,
-    eventSync,
+    sync: undefined,
+    eventSync: undefined,
+    sdk,
   };
 }

@@ -1,12 +1,30 @@
-import React, { useEffect, useRef, useState } from 'react';
+// components/HexGrid.tsx
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import { defineHex, Grid, Orientation, hexToPoint } from 'honeycomb-grid';
+import { defineHex, Orientation, hexToPoint, Grid } from 'honeycomb-grid';
 import _ from 'lodash';
-import { Progress } from '@/components/ui/progress';
-import { Realm, useRealms } from '../hooks/useRealms';
-import { preloadRcsImages } from '../utils/preloadRcsImages';
-import SearchMenu from '../components/SearchMenu';
+
 import { Card } from '../components/ui/card';
+import SearchMenu from '../components/SearchMenu';
+
+import {
+  getChunkCoord,
+  getRegionKey,
+  ChunkCoord,
+  CHUNK_SIZE,
+} from '../utils/chunk';
+import { preloadRcsImages } from '../utils/preloadRcsImages';
+import { useRealms } from '../hooks/useRealms';
+import { useTiles } from '../hooks/useTiles';
+
+// Define your Realm type based on your existing code
+interface Realm {
+  realmId: number;
+  realmName: string;
+  coordinates: { x: number; y: number };
+  resources: number[];
+}
 
 const HexGrid: React.FC = () => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -14,12 +32,25 @@ const HexGrid: React.FC = () => {
   const hexContainerRef = useRef<PIXI.Container | null>(null);
 
   const { realms } = useRealms();
-  const [centerHex, setCenterHex] = useState({ q: 0, r: 0 });
-  const [progress, setProgress] = useState(0);
+  const [centerHex, setCenterHex] = useState({ q: -39, r: 20 });
   const [rcsTextures, setRcsTextures] = useState<Record<
     string,
     PIXI.Texture
   > | null>(null);
+  const [boundingBox, setBoundingBox] = useState({
+    startCol: 0,
+    endCol: 0,
+    startRow: 0,
+    endRow: 0,
+  });
+
+  const discoveredTiles = useTiles({ ...boundingBox });
+  const discoveredTilesRef = useRef(discoveredTiles);
+
+  useEffect(() => {
+    console.log(discoveredTiles);
+    discoveredTilesRef.current = discoveredTiles;
+  }, [discoveredTiles]);
 
   const containerRealmMap = new WeakMap<PIXI.Container, Realm>();
 
@@ -50,8 +81,136 @@ const HexGrid: React.FC = () => {
     }
   }, [centerHex]);
 
+  const hexGridRef = useRef<Grid<any> | null>(null);
+
   useEffect(() => {
-    if (!pixiContainer.current) return;
+    if (!hexGridRef.current) {
+      const HEX_SIZE = 30;
+      const Hex = defineHex({
+        dimensions: HEX_SIZE,
+        orientation: Orientation.FLAT,
+      });
+
+      // Precompute a large shape (avoid recreating this)
+      function bigNegativeToPositiveShape() {
+        const coords = [];
+        for (let q = -1000; q <= 1000; q++) {
+          for (let r = -1000; r <= 1000; r++) {
+            coords.push({ q, r });
+          }
+        }
+        return coords;
+      }
+
+      hexGridRef.current = new Grid(Hex, bigNegativeToPositiveShape());
+    }
+  }, []);
+
+  // Function to calculate visible chunks plus a margin
+  const calculateVisibleChunks = useCallback((): ChunkCoord[] => {
+    if (!appRef.current || !hexContainerRef.current) return [];
+
+    const hexContainer = hexContainerRef.current;
+    const topLeft = hexContainer.toLocal({ x: 0, y: 0 });
+    const bottomRight = hexContainer.toLocal({
+      x: appRef.current.screen.width,
+      y: appRef.current.screen.height,
+    });
+
+    const HEX_SIZE = 30;
+    const bufferChunks = 2; // Number of chunks to preload around the viewport
+
+    // Approximate hex to pixel calculations for chunk determination
+    const approxHexWidth = HEX_SIZE * 1.5; // Width of a hex in pixels
+    const approxHexHeight = HEX_SIZE * Math.sqrt(3); // Height of a hex in pixels
+
+    // Calculate the range of columns and rows visible
+    const minCol =
+      Math.floor(topLeft.x / (CHUNK_SIZE * approxHexWidth)) - bufferChunks;
+    const maxCol =
+      Math.floor(bottomRight.x / (CHUNK_SIZE * approxHexWidth)) + bufferChunks;
+    const minRow =
+      Math.floor(topLeft.y / (CHUNK_SIZE * approxHexHeight)) - bufferChunks;
+    const maxRow =
+      Math.floor(bottomRight.y / (CHUNK_SIZE * approxHexHeight)) + bufferChunks;
+
+    const chunks = new Set<string>();
+    for (let col = minCol; col <= maxCol; col++) {
+      for (let row = minRow; row <= maxRow; row++) {
+        const chunk = getChunkCoord(col, row);
+        const key = getRegionKey(chunk);
+        chunks.add(key);
+      }
+    }
+
+    const chunkCoords: ChunkCoord[] = Array.from(chunks).map((key) => {
+      const [x, y] = key.split(',').map(Number);
+      return { x, y };
+    });
+
+    return chunkCoords;
+  }, []);
+
+  // Function to check if a tile is within visible chunks
+  const isTileWithinChunks = (
+    col: number,
+    row: number,
+    chunks: ChunkCoord[]
+  ): boolean => {
+    return chunks.some((chunk) => {
+      return (
+        col >= chunk.x * CHUNK_SIZE &&
+        col < (chunk.x + 1) * CHUNK_SIZE &&
+        row >= chunk.y * CHUNK_SIZE &&
+        row < (chunk.y + 1) * CHUNK_SIZE
+      );
+    });
+  };
+
+  const updateBoundingBox = () => {
+    if (!hexContainerRef.current || !appRef.current || !hexGridRef.current)
+      return;
+
+    const grid = hexGridRef.current;
+
+    // Convert the screen corners to world coordinates (in pixels)
+    const topLeft = hexContainerRef.current.toLocal({ x: 0, y: 0 });
+    const bottomRight = hexContainerRef.current.toLocal({
+      x: appRef.current.screen.width,
+      y: appRef.current.screen.height,
+    });
+    const topRight = hexContainerRef.current.toLocal({
+      x: appRef.current.screen.width,
+      y: 0,
+    });
+    const bottomLeft = hexContainerRef.current.toLocal({
+      x: 0,
+      y: appRef.current.screen.height,
+    });
+
+    // Convert pixel coordinates to hex grid coordinates
+    const topLeftHex = grid.pointToHex(topLeft, { allowOutside: false });
+    const topRightHex = grid.pointToHex(topRight, { allowOutside: false });
+    const bottomLeftHex = grid.pointToHex(bottomLeft, { allowOutside: false });
+    const bottomRightHex = grid.pointToHex(bottomRight, {
+      allowOutside: false,
+    });
+    const qs = [topLeftHex.q, topRightHex.q, bottomLeftHex.q, bottomRightHex.q];
+    const rs = [topLeftHex.r, topRightHex.r, bottomLeftHex.r, bottomRightHex.r];
+
+    const newBoundingBox = {
+      startCol: Math.floor(Math.min(...qs)),
+      endCol: Math.ceil(Math.max(...qs)),
+      startRow: Math.floor(Math.min(...rs)),
+      endRow: Math.ceil(Math.max(...rs)),
+    };
+
+    setBoundingBox(newBoundingBox);
+  };
+
+  // Initialize PIXI application and setup
+  useEffect(() => {
+    if (!pixiContainer.current || !hexGridRef.current) return;
 
     const app = new PIXI.Application();
     appRef.current = app;
@@ -87,8 +246,6 @@ const HexGrid: React.FC = () => {
 
       // Constants
       const HEX_SIZE = 30;
-
-      // Honeycomb setup
       const Hex = defineHex({
         dimensions: HEX_SIZE,
         orientation: Orientation.FLAT,
@@ -109,7 +266,7 @@ const HexGrid: React.FC = () => {
         if (updateHexesInViewRef.current) {
           updateHexesInViewRef.current();
         }
-      }, 16);
+      }, 16); // ~60fps
 
       const repositionContainer = () => {
         if (!appRef.current || !hexContainerRef.current) return;
@@ -119,22 +276,48 @@ const HexGrid: React.FC = () => {
           y: appRef.current.screen.height / 2,
         };
 
-        // Get the current center hex from the ref.
-        const currentCenterHex = centerHexRef.current;
-
-        // Calculate the center pixel based on the current center hex.
+        const currentCenterHex = centerHex;
         const centerPos = centerPixel(currentCenterHex);
 
-        // Update pivot and position accordingly.
-        // Pivot is set in container space.
         hexContainerRef.current.pivot.set(centerPos.x, centerPos.y);
-
-        // Position is in stage (global) space.
         hexContainerRef.current.position.set(screenCenter.x, screenCenter.y);
       };
 
-      function updateHexesInView() {
+      const updateHexesInView = () => {
         if (!appRef.current || !hexContainerRef.current) return;
+
+        const visibleChunks = calculateVisibleChunks();
+
+        console.log(
+          ' discoveredTiles.forEach((tile)',
+          discoveredTilesRef.current
+        );
+        discoveredTilesRef.current.forEach((tile) => {
+          const key = `${tile.col},${tile.row}-discovered`;
+          // Check if the tile is within any of the visible chunks:
+          //if (isTileWithinChunks(tile.col, tile.row, visibleChunks)) {
+          if (!hexMapRef.current.has(key)) {
+            console.log('Creating discovered hex:', key);
+            const Hex = defineHex({
+              dimensions: HEX_SIZE,
+              orientation: Orientation.FLAT,
+            });
+            const hex = new Hex({ q: tile.col, r: tile.row });
+            const container = createHexDiscoveredContainer(hex);
+            hexMapRef.current.set(key, { container, hex });
+            hexContainerRef.current?.addChild(container);
+          }
+          //}
+        });
+
+        hexMapRef.current.forEach((value, key) => {
+          const [col, row] = key.split(',').map(Number);
+          if (!isTileWithinChunks(col, row, visibleChunks)) {
+            hexContainerRef.current?.removeChild(value.container);
+            hexMapRef.current.delete(key);
+            value.container.destroy({ children: true });
+          }
+        });
 
         const hexContainer = hexContainerRef.current;
         const topLeft = hexContainer.toLocal({ x: 0, y: 0 });
@@ -233,6 +416,23 @@ const HexGrid: React.FC = () => {
             hexMapRef.current.delete(key);
           }
         }
+      };
+
+      function createHexDiscoveredContainer(hex: any) {
+        const hexAndTextContainer = new PIXI.Container();
+        hexAndTextContainer.x = 0;
+        hexAndTextContainer.y = 0;
+
+        const graphics = new PIXI.Graphics();
+
+        graphics
+          .poly(hex.corners)
+          .fill(0xff0000)
+          .stroke({ width: 1, color: 0xd3d3d3, alignment: 1 }); // Inner 1px gray border
+
+        hexAndTextContainer.addChild(graphics);
+
+        return hexAndTextContainer;
       }
 
       function createHexContainer(hex: any, realmOverride: Realm) {
@@ -264,7 +464,7 @@ const HexGrid: React.FC = () => {
         hexAndTextContainer.addChild(graphics);
 
         // *** Debug Text: Show hex coordinates ***
-        /*const debugText = new PIXI.Text(`(${hex.q},${hex.r})`, {
+        const debugText = new PIXI.Text(`(${hex.q},${hex.r})`, {
           fill: 0xff0000,
           fontSize: 10,
           fontFamily: 'Arial',
@@ -276,7 +476,6 @@ const HexGrid: React.FC = () => {
         // Optionally, name it so you can find it later if needed
         debugText.name = 'debugText';
         hexAndTextContainer.addChild(debugText);
-        */
 
         // Handle resource sprites
         if (realm) {
@@ -342,7 +541,6 @@ const HexGrid: React.FC = () => {
         } else {
           graphics
             .poly(hex.corners)
-            .fill(0xffffff)
             .stroke({ width: 1, color: 0xd3d3d3, alignment: 1 }); // Inner 1px gray border
         }
 
@@ -402,10 +600,16 @@ const HexGrid: React.FC = () => {
       repositionContainerRef.current = repositionContainer;
       updateHexesInViewRef.current = updateHexesInView;
 
+      // Initial positioning and rendering
+      repositionContainer();
+      updateHexesInView();
+
+      // Set up event listeners for panning and zooming
       let isDragging = false;
       let dragStartPos = { x: 0, y: 0 };
       let containerStartPos = { x: 0, y: 0 };
-      hexContainer.eventMode = 'static';
+
+      hexContainer.interactive = true;
       hexContainer.cursor = 'grab';
 
       hexContainer.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
@@ -423,18 +627,20 @@ const HexGrid: React.FC = () => {
         hexContainer.x = containerStartPos.x + dx;
         hexContainer.y = containerStartPos.y + dy;
 
+        updateBoundingBox();
+
         debouncedUpdateHexesInView();
       });
 
-      hexContainer.on('pointerup', () => {
+      const endDrag = () => {
         isDragging = false;
         hexContainer.cursor = 'grab';
-      });
-      hexContainer.on('pointerupoutside', () => {
-        isDragging = false;
-        hexContainer.cursor = 'grab';
-      });
+      };
 
+      hexContainer.on('pointerup', endDrag);
+      hexContainer.on('pointerupoutside', endDrag);
+
+      // Zooming
       let scaleFactor = 1;
       app.canvas.addEventListener('wheel', (e: WheelEvent) => {
         e.preventDefault();
@@ -445,6 +651,7 @@ const HexGrid: React.FC = () => {
         };
 
         const worldPos = hexContainer.toLocal(screenCenter);
+
         scaleFactor *= e.deltaY < 0 ? 1.1 : 0.9;
         hexContainer.scale.set(scaleFactor);
 
@@ -454,7 +661,8 @@ const HexGrid: React.FC = () => {
         hexContainer.x += dx;
         hexContainer.y += dy;
 
-        // Use the same debounced function
+        updateBoundingBox();
+
         debouncedUpdateHexesInView();
       });
 
@@ -466,9 +674,11 @@ const HexGrid: React.FC = () => {
 
     return () => {
       app.destroy(true, { children: true });
+      window.removeEventListener('resize', repositionContainer);
     };
   }, []);
 
+  // Reposition and update view when centerHex changes
   useEffect(() => {
     if (repositionContainerRef.current && updateHexesInViewRef.current) {
       repositionContainerRef.current();
@@ -482,7 +692,7 @@ const HexGrid: React.FC = () => {
     if (updateHexesInViewRef.current) {
       updateHexesInViewRef.current();
     }
-  }, [realms]);
+  }, [realms, discoveredTiles]);
 
   return (
     <div className="relative w-screen h-screen">
@@ -493,18 +703,13 @@ const HexGrid: React.FC = () => {
             Coordinates: ({hoveredRealm.coordinates.x},{' '}
             {hoveredRealm.coordinates.y})
           </p>
-          {/*<p>
-            Position: ({hoveredRealm.position.q}, {hoveredRealm.position.r})
-          </p>*/}
           <p>Resources: {hoveredRealm.resources.join(', ')}</p>
         </Card>
       )}
       <SearchMenu
         realms={realms}
         onRealmSelect={(realm) => console.log(realm)}
-        onPositionSelect={(p) => {
-          setCenterHex({ q: p.x, r: p.y });
-        }}
+        onPositionSelect={(p) => setCenterHex({ q: p.x, r: p.y })}
       />
       <div
         ref={pixiContainer}
@@ -516,14 +721,6 @@ const HexGrid: React.FC = () => {
           overflow: 'hidden',
         }}
       />
-      {/*progress < 100 && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 flex flex-col gap-2 bg-background/90 p-4 rounded-lg shadow-lg">
-          <div className="text-center text-sm font-medium">
-            Loading Hex Grid... {Math.round(progress)}%
-          </div>
-          <Progress value={progress} className="w-full" />
-        </div>
-      )*/}
     </div>
   );
 };
