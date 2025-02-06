@@ -1,6 +1,4 @@
-// src/hooks/useTiles.ts
-
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Subscription } from '@dojoengine/torii-client';
 import {
   ParsedEntity,
@@ -9,6 +7,8 @@ import {
 } from '@dojoengine/sdk';
 import { useDojo } from '../dojo/useDojo';
 import { Tile, useTilesStore } from '../stores/useTilesStore';
+
+const TILE_OFFSET = 2147483647; // Extracted constant for clarity
 
 /**
  * Converts a raw ParsedEntity to a Tile object.
@@ -22,7 +22,7 @@ export function parseTile(entity: any): Tile | null {
     console.warn('Invalid tile data:', entity);
     return null;
   }
-  return { col: col - 2147483647, row: row - 2147483647 };
+  return { col: col - TILE_OFFSET, row: row - TILE_OFFSET };
 }
 
 interface UseTilesParams {
@@ -33,6 +33,11 @@ interface UseTilesParams {
   subscribe?: boolean;
 }
 
+/**
+ * Fetches and subscribes to tile updates based on the provided bounding box.
+ *
+ * Returns the tiles stored in the global Zustand store.
+ */
 export function useTiles({
   startCol,
   endCol,
@@ -44,11 +49,13 @@ export function useTiles({
     setup: { sdk },
   } = useDojo();
 
-  // Access store actions from Zustand.
-  const { setTiles, addOrUpdateTile } = useTilesStore();
-  const [localTiles, setLocalTiles] = useState<Tile[]>([]);
+  // Access global store actions from Zustand.
+  const { setTiles, addOrUpdateTile, tiles: storedTiles } = useTilesStore();
+
+  // Ref to hold the subscription (if any).
   const subscriptionRef = useRef<Subscription | null>(null);
 
+  // Build the tile query with bounding box adjustments.
   const buildTileQuery = useCallback(() => {
     const model = 's1_eternum-Tile';
     return new ToriiQueryBuilder()
@@ -60,22 +67,33 @@ export function useTiles({
               model,
               'col',
               'Gte',
-              startCol + 2147483647
+              startCol + TILE_OFFSET
             ),
-            new ClauseBuilder().where(model, 'col', 'Lte', endCol + 2147483647),
+            new ClauseBuilder().where(
+              model,
+              'col',
+              'Lte',
+              endCol + TILE_OFFSET
+            ),
             new ClauseBuilder().where(
               model,
               'row',
               'Gte',
-              startRow + 2147483647
+              startRow + TILE_OFFSET
             ),
-            new ClauseBuilder().where(model, 'row', 'Lte', endRow + 2147483647),
+            new ClauseBuilder().where(
+              model,
+              'row',
+              'Lte',
+              endRow + TILE_OFFSET
+            ),
           ])
           .build()
       )
       .build();
   }, [startCol, endCol, startRow, endRow]);
 
+  // Fetch historical tiles once when parameters or sdk changes.
   const fetchHistoricalTiles = useCallback(async () => {
     if (!sdk) {
       console.warn('SDK not initialized. Skipping tile fetching.');
@@ -93,15 +111,15 @@ export function useTiles({
         .filter((tile): tile is Tile => tile !== null);
 
       console.log('Historical parsedTiles:', parsedTiles);
-      setTiles(parsedTiles); // Store in global Zustand state
-      setLocalTiles(parsedTiles);
+      // Update the global store.
+      setTiles(parsedTiles);
     } catch (error) {
       console.error('Error fetching tiles:', error);
       setTiles([]);
-      setLocalTiles([]);
     }
   }, [buildTileQuery, sdk, setTiles]);
 
+  // Subscribe to tile updates if desired.
   const subscribeToTileUpdates =
     useCallback(async (): Promise<Subscription | null> => {
       if (!sdk) {
@@ -132,20 +150,6 @@ export function useTiles({
               const parsedTile = parseTile(data);
               if (parsedTile) {
                 addOrUpdateTile(parsedTile);
-                // Also update local state if needed
-                setLocalTiles((prevTiles) => {
-                  const index = prevTiles.findIndex(
-                    (tile) =>
-                      tile.col === parsedTile.col && tile.row === parsedTile.row
-                  );
-                  if (index !== -1) {
-                    const updatedTiles = [...prevTiles];
-                    updatedTiles[index] = parsedTile;
-                    return updatedTiles;
-                  } else {
-                    return [...prevTiles, parsedTile];
-                  }
-                });
               }
             }
           }
@@ -158,6 +162,7 @@ export function useTiles({
       }
     }, [sdk, addOrUpdateTile]);
 
+  // Effect: Fetch historical tiles and set up subscription if requested.
   useEffect(() => {
     fetchHistoricalTiles();
 
@@ -177,8 +182,6 @@ export function useTiles({
     };
   }, [fetchHistoricalTiles, subscribe, subscribeToTileUpdates]);
 
-  // Return tiles from the global store (or localTiles if preferred)
-  // Here, we return the global state so that other components (e.g., PIXI) can access it.
-  const { tiles: storedTiles } = useTilesStore();
+  // Return the tiles from the global Zustand store.
   return storedTiles;
 }

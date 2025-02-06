@@ -1,6 +1,12 @@
 // components/HexGrid.tsx
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import * as PIXI from 'pixi.js';
 import { defineHex, Orientation, hexToPoint, Grid } from 'honeycomb-grid';
 import _ from 'lodash';
@@ -15,16 +21,9 @@ import {
   CHUNK_SIZE,
 } from '../utils/chunk';
 import { preloadRcsImages } from '../utils/preloadRcsImages';
-import { useRealms } from '../hooks/useRealms';
+import { Realm, useRealms } from '../hooks/useRealms';
 import { useTiles } from '../hooks/useTiles';
-
-// Define your Realm type based on your existing code
-interface Realm {
-  realmId: number;
-  realmName: string;
-  coordinates: { x: number; y: number };
-  resources: number[];
-}
+import { useTilesStore } from '../stores/useTilesStore';
 
 const HexGrid: React.FC = () => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -32,7 +31,7 @@ const HexGrid: React.FC = () => {
   const hexContainerRef = useRef<PIXI.Container | null>(null);
 
   const { realms } = useRealms();
-  const [centerHex, setCenterHex] = useState({ q: -39, r: 20 });
+  const [centerHex, setCenterHex] = useState({ q: -24, r: 11 });
   const [rcsTextures, setRcsTextures] = useState<Record<
     string,
     PIXI.Texture
@@ -44,7 +43,32 @@ const HexGrid: React.FC = () => {
     endRow: 0,
   });
 
-  const discoveredTiles = useTiles({ ...boundingBox });
+  const memoizedBoundingBox = React.useMemo(
+    () => boundingBox,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      boundingBox.startCol,
+      boundingBox.endCol,
+      boundingBox.startRow,
+      boundingBox.endRow,
+    ]
+  );
+
+  const debouncedSetBoundingBox = useMemo(() => {
+    return _.debounce((newBox: any) => {
+      setBoundingBox(newBox);
+    }, 50); // 50ms delay, adjust as needed
+  }, [setBoundingBox]);
+
+  // Clean up the debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedSetBoundingBox.cancel();
+    };
+  }, [debouncedSetBoundingBox]);
+
+  useTiles(memoizedBoundingBox);
+  const { tiles: discoveredTiles } = useTilesStore();
   const discoveredTilesRef = useRef(discoveredTiles);
 
   useEffect(() => {
@@ -205,7 +229,7 @@ const HexGrid: React.FC = () => {
       endRow: Math.ceil(Math.max(...rs)),
     };
 
-    setBoundingBox(newBoundingBox);
+    debouncedSetBoundingBox(newBoundingBox);
   };
 
   // Initialize PIXI application and setup
@@ -285,69 +309,55 @@ const HexGrid: React.FC = () => {
 
       const updateHexesInView = () => {
         if (!appRef.current || !hexContainerRef.current) return;
-
-        const visibleChunks = calculateVisibleChunks();
-
-        console.log(
-          ' discoveredTiles.forEach((tile)',
-          discoveredTilesRef.current
-        );
-        discoveredTilesRef.current.forEach((tile) => {
-          const key = `${tile.col},${tile.row}-discovered`;
-          // Check if the tile is within any of the visible chunks:
-          //if (isTileWithinChunks(tile.col, tile.row, visibleChunks)) {
-          if (!hexMapRef.current.has(key)) {
-            console.log('Creating discovered hex:', key);
-            const Hex = defineHex({
-              dimensions: HEX_SIZE,
-              orientation: Orientation.FLAT,
-            });
-            const hex = new Hex({ q: tile.col, r: tile.row });
-            const container = createHexDiscoveredContainer(hex);
-            hexMapRef.current.set(key, { container, hex });
-            hexContainerRef.current?.addChild(container);
-          }
-          //}
-        });
-
-        hexMapRef.current.forEach((value, key) => {
-          const [col, row] = key.split(',').map(Number);
-          if (!isTileWithinChunks(col, row, visibleChunks)) {
-            hexContainerRef.current?.removeChild(value.container);
-            hexMapRef.current.delete(key);
-            value.container.destroy({ children: true });
-          }
-        });
-
+        const app = appRef.current;
         const hexContainer = hexContainerRef.current;
+
+        // ---------------------------------------------------------------------------
+        // STEP 1: Process Discovered Tiles
+        // ---------------------------------------------------------------------------
+        const visibleChunks = calculateVisibleChunks();
+        discoveredTilesRef.current.forEach((tile) => {
+          const key = `${tile.col},${tile.row}`;
+          // Only process if the tile is within a visible chunk.
+          if (isTileWithinChunks(tile.col, tile.row, visibleChunks)) {
+            if (!hexMapRef.current.has(key)) {
+              console.log('Creating discovered tile:', key);
+              const Hex = defineHex({
+                dimensions: HEX_SIZE,
+                orientation: Orientation.FLAT,
+              });
+              const hex = new Hex({ q: tile.col, r: tile.row });
+              const container = createHexDiscoveredContainer(hex);
+              hexMapRef.current.set(key, { container, hex });
+              hexContainer.addChild(container);
+            }
+          }
+        });
+
+        // ---------------------------------------------------------------------------
+        // STEP 2: Process Tiles with a Realm (Skip empty tiles)
+        // ---------------------------------------------------------------------------
+        // Determine the visible world bounds (with margins)
         const topLeft = hexContainer.toLocal({ x: 0, y: 0 });
         const bottomRight = hexContainer.toLocal({
-          x: appRef.current.screen.width,
-          y: appRef.current.screen.height,
+          x: app.screen.width,
+          y: app.screen.height,
         });
-
         const minX = Math.min(topLeft.x, bottomRight.x);
         const maxX = Math.max(topLeft.x, bottomRight.x);
         const minY = Math.min(topLeft.y, bottomRight.y);
         const maxY = Math.max(topLeft.y, bottomRight.y);
-
-        const marginY = HEX_SIZE * 15;
         const marginX = HEX_SIZE * 24;
+        const marginY = HEX_SIZE * 15;
         const expandedMinX = minX - marginX;
         const expandedMaxX = maxX + marginX;
         const expandedMinY = minY - marginY;
         const expandedMaxY = maxY + marginY;
 
-        const visibleHexKeys = new Set<string>();
-
-        // Collect all visible hexes first
-        const visibleHexes: Array<{
-          hex: any;
-          key: string;
-          realm: Realm | undefined;
-          point: { x: number; y: number };
-        }> = [];
-
+        // Gather only those hexes whose center is within the expanded bounds.
+        // We then filter for those that have a realm.
+        const visibleRealmHexes = [];
+        const visibleKeys = new Set();
         for (const hex of grid) {
           const point = hexToPoint(hex);
           if (
@@ -357,41 +367,35 @@ const HexGrid: React.FC = () => {
             point.y <= expandedMaxY
           ) {
             const key = `${hex.q},${hex.r}`;
-            visibleHexKeys.add(key);
+            visibleKeys.add(key);
 
             const realm = realmsRef.current.find(
-              (realm) =>
-                realm.coordinates.x === hex.q && realm.coordinates.y === hex.r
+              (r) => r.coordinates.x === hex.q && r.coordinates.y === hex.r
             );
-
-            visibleHexes.push({ hex, key, realm, point });
+            // Only process tiles that have a realm.
+            if (realm) {
+              visibleRealmHexes.push({ hex, key, realm, point });
+            }
           }
         }
 
-        // Sort hexes: non-realm hexes first, then realm hexes
-        // This ensures realm borders are drawn on top
-        visibleHexes.sort((a, b) => {
-          if (!!a.realm === !!b.realm) return 0;
-          return a.realm ? 1 : -1;
-        });
+        // (Optional) Sort so realm tiles are drawn on top if needed.
+        visibleRealmHexes.sort((a, b) => (a.realm ? 1 : -1));
 
-        // Now process the sorted hexes
-        for (const { hex, key, realm } of visibleHexes) {
+        // Create or update containers for realm tiles.
+        visibleRealmHexes.forEach(({ hex, key, realm }) => {
           if (!hexMapRef.current.has(key)) {
             const container = createHexContainer(hex, realm);
-            if (realm) {
-              containerRealmMap.set(container, realm);
-            }
+            containerRealmMap.set(container, realm);
             hexMapRef.current.set(key, { container, hex });
             hexContainer.addChild(container);
           } else {
-            const { container } = hexMapRef.current.get(key)!;
+            const { container } = hexMapRef.current.get(key);
             const existingRealm = containerRealmMap.get(container);
             const realmChanged =
               existingRealm?.realmId !== realm?.realmId ||
               (existingRealm === undefined && realm !== undefined) ||
               (existingRealm !== undefined && realm === undefined);
-
             if (realmChanged) {
               updateHexContainer(container, hex, realm);
               if (realm) {
@@ -399,23 +403,25 @@ const HexGrid: React.FC = () => {
               } else {
                 containerRealmMap.delete(container);
               }
-
-              // Re-order container to maintain layer order
+              // Reorder container so that realm borders display on top.
               hexContainer.removeChild(container);
               hexContainer.addChild(container);
             }
           }
-        }
+        });
 
-        // Remove hexes that are no longer visible
-        for (const [key, { container }] of hexMapRef.current.entries()) {
-          if (!visibleHexKeys.has(key)) {
-            hexContainer.removeChild(container);
-            containerRealmMap.delete(container);
-            container.destroy({ children: true });
+        // ---------------------------------------------------------------------------
+        // STEP 3: Clean Up - Remove Containers Not Within Visible Bounds
+        // ---------------------------------------------------------------------------
+        // This cleanup applies to both discovered and realm tiles.
+        hexMapRef.current.forEach((value, key) => {
+          if (!visibleKeys.has(key)) {
+            hexContainer.removeChild(value.container);
+            containerRealmMap.delete(value.container);
+            value.container.destroy({ children: true });
             hexMapRef.current.delete(key);
           }
-        }
+        });
       };
 
       function createHexDiscoveredContainer(hex: any) {
@@ -435,7 +441,11 @@ const HexGrid: React.FC = () => {
         return hexAndTextContainer;
       }
 
-      function createHexContainer(hex: any, realmOverride: Realm) {
+      function createHexContainer(
+        hex: any,
+        realmOverride: Realm | undefined,
+        displayText = false
+      ) {
         const point = hexToPoint(hex);
         const hexAndTextContainer = new PIXI.Container();
         hexAndTextContainer.x = 0;
@@ -446,7 +456,7 @@ const HexGrid: React.FC = () => {
           realmOverride ||
           realmsRef.current.find(
             (realm) =>
-              realm.coordinates.x === hex.q && realm.coordinates.y === hex.r
+              realm?.coordinates?.x === hex.q && realm?.coordinates?.y === hex.r
           );
 
         if (realm) {
@@ -457,25 +467,27 @@ const HexGrid: React.FC = () => {
         } else {
           graphics
             .poly(hex.corners)
-            .fill(0xffffff)
+            .fill(0xffffff, 0)
             .stroke({ width: 1, color: 0xd3d3d3, alignment: 1 }); // Inner 1px gray border
         }
 
         hexAndTextContainer.addChild(graphics);
 
         // *** Debug Text: Show hex coordinates ***
-        const debugText = new PIXI.Text(`(${hex.q},${hex.r})`, {
-          fill: 0xff0000,
-          fontSize: 10,
-          fontFamily: 'Arial',
-        });
-        // Center the text in the hex
-        debugText.anchor.set(0.5);
-        // Position the text at the center of the hex tile
-        debugText.position.set(point.x, point.y);
-        // Optionally, name it so you can find it later if needed
-        debugText.name = 'debugText';
-        hexAndTextContainer.addChild(debugText);
+        if (displayText) {
+          const debugText = new PIXI.Text(`(${hex.q},${hex.r})`, {
+            fill: 0xff0000,
+            fontSize: 10,
+            fontFamily: 'Arial',
+          });
+          // Center the text in the hex
+          debugText.anchor.set(0.5);
+          // Position the text at the center of the hex tile
+          debugText.position.set(point.x, point.y);
+          // Optionally, name it so you can find it later if needed
+          debugText.name = 'debugText';
+          hexAndTextContainer.addChild(debugText);
+        }
 
         // Handle resource sprites
         if (realm) {
@@ -526,7 +538,7 @@ const HexGrid: React.FC = () => {
       function updateHexContainer(
         container: PIXI.Container,
         hex: any,
-        realm: Realm
+        realm: Realm | undefined
       ) {
         const graphics = container.getChildAt(0) as PIXI.Graphics;
         const point = hexToPoint(hex);
