@@ -7,7 +7,7 @@ import { Test } from './screens/Test';
 function App() {
   const a = useRealms();
   //const b = useTest();
-  console.log(a);
+  console.log('useRealms', a);
   //console.log(b);
   return (
     <main className="h-screen bg-background">

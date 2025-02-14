@@ -53,16 +53,16 @@ export const useRealms = () => {
         });
 
         const edges =
-          data.s0EternumSettleRealmDataModels?.edges ||
-          data.s0EternumRealmModels?.edges;
+          data.s1EternumSettleRealmDataModels?.edges ||
+          data.s1EternumRealmModels?.edges;
         allData = allData.concat(edges);
 
         hasNextPage =
-          data.s0EternumSettleRealmDataModels?.pageInfo?.hasNextPage ||
-          data.s0EternumRealmModels?.pageInfo?.hasNextPage;
+          data.s1EternumSettleRealmDataModels?.pageInfo?.hasNextPage ||
+          data.s1EternumRealmModels?.pageInfo?.hasNextPage;
         after =
-          data.s0EternumSettleRealmDataModels?.pageInfo?.endCursor ||
-          data.s0EternumRealmModels?.pageInfo?.endCursor;
+          data.s1EternumSettleRealmDataModels?.pageInfo?.endCursor ||
+          data.s1EternumRealmModels?.pageInfo?.endCursor;
       }
 
       return allData;

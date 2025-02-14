@@ -1,7 +1,7 @@
 import { ApolloClient, InMemoryCache } from '@apollo/client';
 
 const client = new ApolloClient({
-  uri: 'https://api.cartridge.gg/x/eternum-prod/torii/graphql',
+  uri: import.meta.env.VITE_PUBLIC_TORII + '/graphql',
   cache: new InMemoryCache(),
 });
 

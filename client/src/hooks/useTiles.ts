@@ -7,6 +7,8 @@ import {
 } from '@dojoengine/sdk';
 import { useDojo } from '../dojo/useDojo';
 import { Tile, useTilesStore } from '../stores/useTilesStore';
+import { BIOME_COLORS } from '../types/biomes';
+import { BiomeType } from '@bibliothecadao/eternum';
 
 const TILE_OFFSET = 2147483647; // Extracted constant for clarity
 
@@ -17,12 +19,18 @@ export function parseTile(entity: any): Tile | null {
   const tile = entity.models.s1_eternum.Tile;
   if (!tile) return null;
 
-  const { col, row } = tile;
+  console.log(tile);
+  const { col, row, biome } = tile;
   if (typeof col !== 'number' || typeof row !== 'number') {
     console.warn('Invalid tile data:', entity);
     return null;
   }
-  return { col: col - TILE_OFFSET, row: row - TILE_OFFSET };
+  return {
+    col: col - TILE_OFFSET,
+    row: row - TILE_OFFSET,
+    biome,
+    color: BIOME_COLORS[biome as BiomeType],
+  };
 }
 
 interface UseTilesParams {

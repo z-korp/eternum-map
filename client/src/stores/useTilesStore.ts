@@ -1,8 +1,11 @@
+import { BiomeType } from '@bibliothecadao/eternum';
 import { create } from 'zustand';
 
 export interface Tile {
   col: number;
   row: number;
+  biome: BiomeType;
+  color: string;
 }
 
 // Define the shape of our global tiles state.
