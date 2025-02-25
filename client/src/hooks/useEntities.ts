@@ -10,7 +10,7 @@ import {
 } from '@bibliothecadao/eternum';
 import { useEntityQuery } from '@dojoengine/react';
 import { Has, getComponentValue, type ComponentValue } from '@dojoengine/recs';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { shortString } from 'starknet';
 import { useDojo } from '../dojo/useDojo';
 import { useResourcesUtils } from './useResources';
@@ -173,14 +173,13 @@ export const useEntities = () => {
       .sort((a, b) => a.category.localeCompare(b.category));
   }, [filterOtherStructures]);
 
-  const getPlayerRealms = (
-    filterFn?: (realm: RealmWithPosition) => boolean
-  ) => {
-    return useMemo(() => {
+  const getPlayerRealms = useCallback(
+    (filterFn?: (realm: RealmWithPosition) => boolean) => {
       const realms = filterFn ? playerRealms.filter(filterFn) : playerRealms;
       return realms.sort((a, b) => a.name.localeCompare(b.name));
-    }, [playerRealms, filterFn]);
-  };
+    },
+    [playerRealms]
+  );
 
   const getOtherRealms = (filterFn?: (realm: RealmWithPosition) => boolean) => {
     return useMemo(() => {

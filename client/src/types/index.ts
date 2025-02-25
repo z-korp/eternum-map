@@ -2,6 +2,16 @@ import { ID, StructureType } from '@bibliothecadao/eternum';
 import { Position } from './Position';
 export type HexPosition = { col: number; row: number };
 
+export interface Realm {
+  id: string;
+  realmId: string;
+  realmName: string;
+  resources: number[];
+  hasWonder: boolean;
+  coordinates: { x: number; y: number };
+  position: { q: number; r: number } | null;
+}
+
 export enum SceneName {
   WorldMap = 'map',
   Hexception = 'hex',

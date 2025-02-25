@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useBackendTiles } from './useBackendTiles';
 import { ParsedEntity } from '@dojoengine/sdk';
-import { ChunkCoord, getRegionKey } from '../utils/chunkUtils';
 
 /**
  * Interface representing tile data.

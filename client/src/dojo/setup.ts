@@ -7,7 +7,6 @@ import { init } from '@dojoengine/sdk/experimental';
 export type SetupResult = Awaited<ReturnType<typeof setup>>;
 
 export async function setup({ ...config }: DojoConfig) {
-  console.log('qqqq', config);
   const sdk = await init({
     client: {
       rpcUrl: config.rpcUrl,
@@ -22,13 +21,10 @@ export async function setup({ ...config }: DojoConfig) {
       revision: '1',
     },
   });
-  console.log('sdk', sdk);
 
   const network = await setupNetwork(config);
   const components = createClientComponents(network);
   const systemCalls = createSystemCalls(network);
-
-  console.log('bbbbb2');
 
   /*const configClauses: Clause[] = [
     {

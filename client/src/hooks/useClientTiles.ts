@@ -12,12 +12,8 @@ export const useClientTiles = () => {
     },
   } = useDojo();
 
-  console.log(Tile);
-
   // This query returns entity keys for all entities that have the Tile component.
   const tileKeys = useEntityQuery([Has(Tile)]);
-
-  console.log('tileKeys', tileKeys);
 
   // Convert the array of keys to tile data
   const tiles = useMemo(() => {

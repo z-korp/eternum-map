@@ -21,7 +21,6 @@ export function Main() {
 
   useEffect(() => {
     async function initialize() {
-      console.log('sssss');
       const setupResult = await setup(dojoConfig);
       setSetupResult(setupResult);
     }

@@ -15,11 +15,10 @@ const TILE_OFFSET = 2147483647; // Extracted constant for clarity
 /**
  * Converts a raw ParsedEntity to a Tile object.
  */
-export function parseTile(entity: any): Tile | null {
+export function parseTile(entity: ParsedEntity<any>): Tile | null {
   const tile = entity.models.s1_eternum.Tile;
   if (!tile) return null;
 
-  console.log(tile);
   const { col, row, biome } = tile;
   if (typeof col !== 'number' || typeof row !== 'number') {
     console.warn('Invalid tile data:', entity);
@@ -64,7 +63,7 @@ export function useTiles({
   const subscriptionRef = useRef<Subscription | null>(null);
 
   // Build the tile query with bounding box adjustments.
-  const buildTileQuery = useCallback(() => {
+  const buildTileQuery = useCallback((): any => {
     const model = 's1_eternum-Tile';
     return new ToriiQueryBuilder()
       .withClause(
@@ -98,11 +97,12 @@ export function useTiles({
           ])
           .build()
       )
+      .withLimit(1000)
       .build();
   }, [startCol, endCol, startRow, endRow]);
 
   // Fetch historical tiles once when parameters or sdk changes.
-  const fetchHistoricalTiles = useCallback(async () => {
+  const fetchHistoricalTiles = useCallback(async (): Promise<void> => {
     if (!sdk) {
       console.warn('SDK not initialized. Skipping tile fetching.');
       return;
@@ -142,23 +142,25 @@ export function useTiles({
 
         const [initialData, subscription] = await sdk.subscribeEntities(
           query,
-          ({
-            data,
-            error,
-          }: {
-            data: ParsedEntity<any> | null;
-            error: Error | null;
-          }) => {
-            if (error) {
-              console.error('Tile subscription error:', error);
+          (response) => {
+            if (response.error) {
+              console.error('Tile subscription error:', response.error);
               return;
             }
-            if (data) {
-              console.log('New or updated tile received:', data);
-              const parsedTile = parseTile(data);
-              if (parsedTile) {
-                addOrUpdateTile(parsedTile);
-              }
+
+            if (response.data) {
+              // Handle both single entity and array of entities
+              const entities = Array.isArray(response.data)
+                ? response.data
+                : [response.data];
+
+              entities.forEach((entity) => {
+                console.log('New or updated tile received:', entity);
+                const parsedTile = parseTile(entity);
+                if (parsedTile) {
+                  addOrUpdateTile(parsedTile);
+                }
+              });
             }
           }
         );

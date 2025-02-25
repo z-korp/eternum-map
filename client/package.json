@@ -24,6 +24,7 @@
     "@dojoengine/state": "1.0.10",
     "@dojoengine/torii-client": "1.0.10",
     "@dojoengine/utils": "1.0.10",
+    "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-progress": "^1.1.1",
     "@radix-ui/react-select": "^2.1.4",
     "@radix-ui/react-slot": "^1.1.1",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/lodash": "^4.17.15",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",

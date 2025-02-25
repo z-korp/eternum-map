@@ -1,8 +1,8 @@
 import { Routes, Route } from 'react-router-dom';
 import HexCalculator from './components/HexCalculator';
 import { useRealms } from './hooks/useRealms';
-import Pixi from './screens/Pixi';
 import { Test } from './screens/Test';
+import HexGridScreen from './screens/HexGridScreen';
 
 function App() {
   const a = useRealms();
@@ -12,7 +12,7 @@ function App() {
   return (
     <main className="h-screen bg-background">
       <Routes>
-        <Route path="/" element={<Pixi />} />
+        <Route path="/" element={<HexGridScreen />} />
         <Route path="/calculator" element={<HexCalculator />} />
         <Route path="/test" element={<Test />} />
       </Routes>

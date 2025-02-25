@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Search, MapPin, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Realm } from '../hooks/useRealms';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Realm } from '../types';
 
 interface SearchMenuProps {
   realms: Realm[];

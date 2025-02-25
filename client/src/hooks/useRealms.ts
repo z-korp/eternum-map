@@ -3,16 +3,7 @@ import { useApolloClient } from '@apollo/client';
 import { REALM_MODELS_QUERY, SETTLE_REALM_DATA_QUERY } from '../queries';
 import realmsJson from '../../public/assets/jsons/realms.json';
 import { unpackResources } from '../ui/utils/packedData';
-
-export interface Realm {
-  id: string;
-  realmId: string;
-  realmName: string;
-  resources: number[];
-  hasWonder: boolean;
-  coordinates: { x: number; y: number } | null;
-  position: { q: number; r: number } | null;
-}
+import { Realm } from '../types';
 
 export interface RealmsJson {
   [key: string]: {
