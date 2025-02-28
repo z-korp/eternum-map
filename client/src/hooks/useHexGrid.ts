@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { defineHex, Orientation, Grid } from 'honeycomb-grid';
+import { defineHex, Orientation, Grid, Hex } from 'honeycomb-grid';
 
 export function useHexGrid(HEX_SIZE = 30) {
   // Define hex grid
@@ -13,7 +13,7 @@ export function useHexGrid(HEX_SIZE = 30) {
     [HEX_SIZE]
   );
 
-  const hexGridRef = useRef<Grid<any> | null>(null);
+  const hexGridRef = useRef<Grid<Hex> | null>(null);
 
   // Initialize grid once
   useEffect(() => {

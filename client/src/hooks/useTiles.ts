@@ -63,38 +63,38 @@ export function useTiles({
   const subscriptionRef = useRef<Subscription | null>(null);
 
   // Build the tile query with bounding box adjustments.
-  const buildTileQuery = useCallback((): any => {
+  const buildTileQuery = useCallback(() => {
     const model = 's1_eternum-Tile';
+    const clause_col_gte = new ClauseBuilder().where(
+      model,
+      'col',
+      'Gte',
+      startCol + TILE_OFFSET
+    );
+    const clause_col_lte = new ClauseBuilder().where(
+      model,
+      'col',
+      'Lte',
+      endCol + TILE_OFFSET
+    );
+    const clause_row_gte = new ClauseBuilder().where(
+      model,
+      'row',
+      'Gte',
+      startRow + TILE_OFFSET
+    );
+    const clause_row_lte = new ClauseBuilder().where(
+      model,
+      'row',
+      'Lte',
+      endRow + TILE_OFFSET
+    );
+
     return new ToriiQueryBuilder()
       .withClause(
         new ClauseBuilder()
           .compose()
-          .and([
-            new ClauseBuilder().where(
-              model,
-              'col',
-              'Gte',
-              startCol + TILE_OFFSET
-            ),
-            new ClauseBuilder().where(
-              model,
-              'col',
-              'Lte',
-              endCol + TILE_OFFSET
-            ),
-            new ClauseBuilder().where(
-              model,
-              'row',
-              'Gte',
-              startRow + TILE_OFFSET
-            ),
-            new ClauseBuilder().where(
-              model,
-              'row',
-              'Lte',
-              endRow + TILE_OFFSET
-            ),
-          ])
+          .and([clause_col_gte, clause_col_lte, clause_row_gte, clause_row_lte])
           .build()
       )
       .withLimit(1000)
@@ -140,7 +140,7 @@ export function useTiles({
           .withEntityModels(['s1_eternum-Tile'])
           .build();
 
-        const [initialData, subscription] = await sdk.subscribeEntities(
+        const [, subscription] = await sdk.subscribeEntities(
           query,
           (response) => {
             if (response.error) {

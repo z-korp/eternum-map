@@ -1,13 +1,12 @@
 // components/HexRenderer.ts
 import * as PIXI from 'pixi.js';
-import { hexToPoint } from 'honeycomb-grid';
+import { Grid, Hex, hexToPoint } from 'honeycomb-grid';
 import { Realm } from '../types';
 
 class HexRenderer {
-  private myHex: any;
   private hexContainer: PIXI.Container;
   private hexMapRef: React.MutableRefObject<
-    Map<string, { container: PIXI.Container; hex: any }>
+    Map<string, { container: PIXI.Container; hex: Hex }>
   >;
   private rcsTexturesRef: React.MutableRefObject<Record<
     string,
@@ -19,17 +18,15 @@ class HexRenderer {
   private containerRealmMap: WeakMap<PIXI.Container, Realm>;
 
   constructor(
-    myHex: any,
     hexContainer: PIXI.Container,
     hexMapRef: React.MutableRefObject<
-      Map<string, { container: PIXI.Container; hex: any }>
+      Map<string, { container: PIXI.Container; hex: Hex }>
     >,
     rcsTexturesRef: React.MutableRefObject<Record<string, PIXI.Texture> | null>,
     realmsRef: React.MutableRefObject<Realm[]>,
     onRealmHover: (realm: Realm | null) => void,
     hexSize: number
   ) {
-    this.myHex = myHex;
     this.hexContainer = hexContainer;
     this.hexMapRef = hexMapRef;
     this.rcsTexturesRef = rcsTexturesRef;
@@ -39,7 +36,7 @@ class HexRenderer {
     this.containerRealmMap = new WeakMap<PIXI.Container, Realm>();
   }
 
-  createHexDiscoveredContainer(hex: any, color: string): PIXI.Container {
+  createHexDiscoveredContainer(hex: Hex, color: string): PIXI.Container {
     const hexAndTextContainer = new PIXI.Container();
     hexAndTextContainer.x = 0;
     hexAndTextContainer.y = 0;
@@ -57,7 +54,7 @@ class HexRenderer {
   }
 
   createHexContainer(
-    hex: any,
+    hex: Hex,
     realmOverride: Realm | undefined,
     displayText = false
   ): PIXI.Container {
@@ -150,7 +147,7 @@ class HexRenderer {
     realm: Realm | undefined
   ) {
     graphics.eventMode = 'static';
-    graphics.cursor = 'pointer';
+    graphics.cursor = 'grab';
 
     const updateHoverState = (isOver: boolean) => {
       if (isOver) {
@@ -170,7 +167,7 @@ class HexRenderer {
 
   updateHexContainer(
     container: PIXI.Container,
-    hex: any,
+    hex: Hex,
     realm: Realm | undefined
   ): PIXI.Container {
     const graphics = container.getChildAt(0) as PIXI.Graphics;
@@ -206,7 +203,11 @@ class HexRenderer {
     return container;
   }
 
-  updateVisibleRealmHexes(grid: any, app: PIXI.Application, hexSize: number) {
+  updateVisibleRealmHexes(
+    grid: Grid<Hex>,
+    app: PIXI.Application,
+    hexSize: number
+  ) {
     if (!grid || !app || !this.hexContainer) return;
 
     // Determine visible bounds with margins
@@ -254,7 +255,7 @@ class HexRenderer {
     }
 
     // Sort realm tiles to draw on top
-    visibleRealmHexes.sort((a, b) => (a.realm ? 1 : -1));
+    visibleRealmHexes.sort((a) => (a.realm ? 1 : -1));
 
     // Create or update containers for realm tiles
     visibleRealmHexes.forEach(({ hex, key, realm }) => {

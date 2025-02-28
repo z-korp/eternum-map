@@ -6,9 +6,10 @@ import { useVisibleBounds } from '../hooks/useVisibleBounds';
 import { useInteractions } from '../hooks/useInteractions';
 import { useTiles } from '../hooks/useTiles';
 import { useTilesStore } from '../stores/useTilesStore';
-import { hexToPoint } from 'honeycomb-grid';
+import { Hex, hexToPoint } from 'honeycomb-grid';
 import { preloadRcsImages } from '../utils/preloadRcsImages';
 import * as PIXI from 'pixi.js';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import _ from 'lodash';
 import { Realm } from '../types';
 import HexRenderer from './HexRenderer';
@@ -29,14 +30,13 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
   const hexContainerRef = useRef<PIXI.Container | null>(null);
   const appRef = usePixiApp(pixiContainer);
   const hexMapRef = useRef(
-    new Map<string, { container: PIXI.Container; hex: any }>()
+    new Map<string, { container: PIXI.Container; hex: Hex }>()
   );
   const realmsRef = useRef(realms);
   const centerHexRef = useRef(centerHex);
-  const [rcsTextures, setRcsTextures] = useState<Record<
-    string,
-    PIXI.Texture
-  > | null>(null);
+  const [, setRcsTextures] = useState<Record<string, PIXI.Texture> | null>(
+    null
+  );
   const rcsTexturesRef = useRef<Record<string, PIXI.Texture> | null>(null);
 
   // Get hex grid configuration
@@ -50,6 +50,7 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
 
   // Track visible area
   const { boundingBox, updateBoundingBox } = useVisibleBounds(
+    centerHex,
     hexContainerRef,
     appRef,
     gridRef
@@ -75,6 +76,12 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
       updateHexesInViewRef.current?.();
     }
   }, [centerHex]);
+
+  useEffect(() => {
+    if (updateHexesInViewRef.current && discoveredTiles.length > 0) {
+      updateHexesInViewRef.current();
+    }
+  }, [discoveredTiles]);
 
   // Helper for positioning
   const centerPixel = useCallback(
@@ -110,7 +117,6 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
 
       // Set up hex rendering functions - implement these in HexRenderer
       const hexRenderer = new HexRenderer(
-        myHex,
         hexContainer,
         hexMapRef,
         rcsTexturesRef,

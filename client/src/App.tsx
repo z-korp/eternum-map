@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import HexCalculator from './components/HexCalculator';
 import { useRealms } from './hooks/useRealms';
-import { Test } from './screens/Test';
 import HexGridScreen from './screens/HexGridScreen';
 
 function App() {
@@ -14,7 +13,6 @@ function App() {
       <Routes>
         <Route path="/" element={<HexGridScreen />} />
         <Route path="/calculator" element={<HexCalculator />} />
-        <Route path="/test" element={<Test />} />
       </Routes>
     </main>
   );
