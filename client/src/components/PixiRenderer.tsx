@@ -69,11 +69,17 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
     realmsRef.current = realms;
   }, [realms]);
 
+  // Functions for container positioning and hex updates
+  const repositionContainerRef = useRef<() => void>(() => {});
+  const updateHexesInViewRef = useRef<() => void>(() => {});
+  const updateHitAreaRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     centerHexRef.current = centerHex;
     if (repositionContainerRef.current) {
       repositionContainerRef.current();
       updateHexesInViewRef.current?.();
+      updateHitAreaRef.current?.();
     }
   }, [centerHex]);
 
@@ -91,10 +97,6 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
     [myHex]
   );
 
-  // Functions for container positioning and hex updates
-  const repositionContainerRef = useRef<() => void>(() => {});
-  const updateHexesInViewRef = useRef<() => void>(() => {});
-
   // Set up hex rendering and interaction
   useEffect(() => {
     if (!appRef.current || !pixiContainer.current || !grid) return;
@@ -109,7 +111,8 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
 
       // Create a container for the hexes
       const hexContainer = new PIXI.Container();
-      hexContainer.hitArea = new PIXI.Rectangle(-2000, -2000, 4000, 4000);
+      // Make the initial hit area much larger
+      hexContainer.hitArea = new PIXI.Rectangle(-10000, -10000, 20000, 20000);
       hexContainer.eventMode = 'static';
       hexContainer.cursor = 'grab';
       hexContainerRef.current = hexContainer;
@@ -170,22 +173,52 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
         hexRenderer.updateVisibleRealmHexes(grid, appRef.current, HEX_SIZE);
       };
 
+      // Add a function to update the hit area
+      const updateHitArea = () => {
+        if (!appRef.current || !hexContainerRef.current) return;
+
+        // Get the current view bounds in world coordinates
+        const topLeft = hexContainerRef.current.toLocal({ x: 0, y: 0 });
+        const bottomRight = hexContainerRef.current.toLocal({
+          x: appRef.current.screen.width,
+          y: appRef.current.screen.height,
+        });
+
+        // Calculate width and height with padding
+        const padding = 5000; // Large padding to ensure we can drag far
+        const minX = Math.min(topLeft.x, bottomRight.x) - padding;
+        const maxX = Math.max(topLeft.x, bottomRight.x) + padding;
+        const minY = Math.min(topLeft.y, bottomRight.y) - padding;
+        const maxY = Math.max(topLeft.y, bottomRight.y) + padding;
+
+        // Update the hit area
+        hexContainerRef.current.hitArea = new PIXI.Rectangle(
+          minX,
+          minY,
+          maxX - minX,
+          maxY - minY
+        );
+      };
+
       // Store references to functions
       repositionContainerRef.current = repositionContainer;
       updateHexesInViewRef.current = updateHexesInView;
+      updateHitAreaRef.current = updateHitArea;
 
       // Initial positioning and rendering
       repositionContainer();
       updateHexesInView();
+      updateHitArea();
     };
 
     initializeHexGrid();
   }, [appRef, centerPixel, grid, myHex, HEX_SIZE, onRealmHover]);
 
   // Set up interaction handlers
-  useInteractions(hexContainerRef, appRef, updateBoundingBox, () =>
-    updateHexesInViewRef.current?.()
-  );
+  useInteractions(hexContainerRef, appRef, updateBoundingBox, () => {
+    updateHexesInViewRef.current?.();
+    updateHitAreaRef.current?.();
+  });
 
   return (
     <div
