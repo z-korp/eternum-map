@@ -19,12 +19,14 @@ interface PixiRendererProps {
   centerHex: { col: number; row: number };
   realms: Realm[];
   onRealmHover: (realm: Realm | null) => void;
+  showTiles?: boolean;
 }
 
 const PixiRenderer: React.FC<PixiRendererProps> = ({
   centerHex,
   realms,
   onRealmHover,
+  showTiles = true,
 }) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
   const hexContainerRef = useRef<PIXI.Container | null>(null);
@@ -33,7 +35,9 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
     new Map<string, { container: PIXI.Container; hex: Hex }>()
   );
   const realmsRef = useRef(realms);
+  const prevRealmsRef = useRef<Realm[]>([]);
   const centerHexRef = useRef(centerHex);
+  const showTilesRef = useRef(showTiles);
   const [, setRcsTextures] = useState<Record<string, PIXI.Texture> | null>(
     null
   );
@@ -65,8 +69,53 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
     discoveredTilesRef.current = discoveredTiles;
   }, [discoveredTiles]);
 
+  // Add a separate effect for showTiles changes
   useEffect(() => {
+    console.log('showTiles changed:', showTiles);
+    showTilesRef.current = showTiles;
+
+    // Trigger tile visibility update when showTiles changes
+    if (updateHexesInViewRef.current) {
+      updateHexesInViewRef.current();
+    }
+  }, [showTiles]);
+
+  // Update realmsRef when realms change and trigger re-render
+  useEffect(() => {
+    // Store the previous realms before updating
+    prevRealmsRef.current = realmsRef.current;
     realmsRef.current = realms;
+
+    console.log('realms changed');
+
+    // This is the key part - we need to clear existing realm hexes and re-render
+    if (updateHexesInViewRef.current && hexContainerRef.current) {
+      // Find realms that were in the previous list but not in the current list
+      const removedRealms = prevRealmsRef.current.filter(
+        (prevRealm) =>
+          !realms.some(
+            (currentRealm) =>
+              currentRealm.coordinates.x === prevRealm.coordinates.x &&
+              currentRealm.coordinates.y === prevRealm.coordinates.y
+          )
+      );
+
+      // Clear removed realm hexes
+      removedRealms.forEach((removedRealm) => {
+        const key = `${removedRealm.coordinates.x},${removedRealm.coordinates.y}`;
+        const hexData = hexMapRef.current.get(key);
+
+        if (hexData) {
+          // Remove from container
+          hexContainerRef.current?.removeChild(hexData.container);
+          // Remove from map
+          hexMapRef.current.delete(key);
+        }
+      });
+
+      // Now re-render to add any new realms
+      updateHexesInViewRef.current();
+    }
   }, [realms]);
 
   // Functions for container positioning and hex updates
@@ -147,29 +196,59 @@ const PixiRenderer: React.FC<PixiRendererProps> = ({
       const updateHexesInView = () => {
         if (!appRef.current || !hexContainerRef.current) return;
 
-        // Process discovered tiles
-        const visibleChunks = calculateVisibleChunks(
-          appRef.current,
-          hexContainerRef.current,
-          HEX_SIZE
-        );
+        // Always use the current value from the ref
+        const shouldShowTiles = showTilesRef.current;
 
-        discoveredTilesRef.current.forEach((tile) => {
-          if (isTileWithinChunks(tile.col, tile.row, visibleChunks)) {
-            const key = `${tile.col},${tile.row}`;
-            if (!hexMapRef.current.has(key)) {
-              const hex = new myHex({ col: tile.col, row: tile.row });
-              const container = hexRenderer.createHexDiscoveredContainer(
-                hex,
-                tile.color
-              );
-              hexMapRef.current.set(key, { container, hex });
-              hexContainer.addChild(container);
+        // Process discovered tiles if they should be shown
+        if (shouldShowTiles) {
+          console.log('Showing tiles');
+          const visibleChunks = calculateVisibleChunks(
+            appRef.current,
+            hexContainerRef.current,
+            HEX_SIZE
+          );
+
+          discoveredTilesRef.current.forEach((tile) => {
+            if (isTileWithinChunks(tile.col, tile.row, visibleChunks)) {
+              const key = `${tile.col},${tile.row}`;
+              if (!hexMapRef.current.has(key)) {
+                const hex = new myHex({ col: tile.col, row: tile.row });
+                const container = hexRenderer.createHexDiscoveredContainer(
+                  hex,
+                  tile.color
+                );
+                hexMapRef.current.set(key, { container, hex });
+                hexContainer.addChild(container);
+              }
             }
-          }
-        });
+          });
+        } else {
+          console.log('Hiding tiles');
+          // If tiles shouldn't be shown, remove any existing tile hexes
+          const tilesToRemove: string[] = [];
 
-        // Process realm tiles
+          hexMapRef.current.forEach((value, key) => {
+            // Check if this is a tile hex (not a realm hex)
+            const [col, row] = key.split(',').map(Number);
+            const isRealm = realmsRef.current.some(
+              (r) => r.coordinates.x === col && r.coordinates.y === row
+            );
+
+            if (!isRealm) {
+              // Remove from container
+              hexContainerRef.current?.removeChild(value.container);
+              // Store keys to remove after iteration
+              tilesToRemove.push(key);
+            }
+          });
+
+          // Remove from map after iteration
+          tilesToRemove.forEach((key) => {
+            hexMapRef.current.delete(key);
+          });
+        }
+
+        // Process realm tiles (these are always shown)
         hexRenderer.updateVisibleRealmHexes(grid, appRef.current, HEX_SIZE);
       };
 
